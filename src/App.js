@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, FileText, Download, AlertCircle, CheckCircle, Building, User, Calendar, Receipt, Eye, Clipboard, Save, History, Star, Shield, FileCheck, X, ArrowLeft, Folder, Loader2, Trash2, LogOut, ChevronDown, Sparkles, Zap, Users, UserPlus, HelpCircle, Send } from 'lucide-react';
+import { Upload, FileText, Download, AlertCircle, CheckCircle, Building, User, Calendar, Receipt, Eye, Save, History, Shield, X, ArrowLeft, Folder, Loader2, Trash2, LogOut, ChevronDown, Sparkles, Zap, Users, UserPlus, HelpCircle, Send } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import { processDocument } from './utils/documentParsers';
 import { parseExtractedData } from './utils/clientOCR';
@@ -142,14 +142,23 @@ localStorage.removeItem('defaultSurety');
       optionExerciseDate: ''
     },
     financial: {
-      year1: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
-      year2: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
-      year3: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
-      year4: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
-      year5: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+      year1: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+      year2: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+      year3: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+      year4: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+      year5: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
       escalationRate: '6', // Default 6% escalation - configurable
       deposit: '',
       depositType: 'held', // 'held' or 'payable'
+      depositHeldAmount: '',
+      depositPaymentMonths: '',
+      depositPaymentStartDate: '',
+      chargeColumns: {
+        security: true,
+        cleaning: false,
+        operatingCosts: false,
+        insurance: false
+      },
       annexures: { A: true, B: true, C: true, D: true }, // Annexure checkboxes
       leaseFee: '750.00',
       utilities: 'METERED OR % AGE OF EXPENSE',
@@ -176,7 +185,7 @@ localStorage.removeItem('defaultSurety');
       return extractedData.financial[yearKey];
     }
     // Return empty structure for years that don't exist yet
-    return { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' };
+    return { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' };
   };
 
   // Helper function to calculate escalated value (configurable % increase per year)
@@ -284,7 +293,6 @@ localStorage.removeItem('defaultSurety');
   });
 
   // Count uploaded documents
-  const uploadedDocumentsCount = Object.values(documents).reduce((total, files) => total + (Array.isArray(files) ? files.length : 0), 0);
 
   // Format date as DD/MM/YYYY for display in labels
   const formatDateDDMMYYYY = (dateString) => {
@@ -948,24 +956,35 @@ localStorage.removeItem('defaultSurety');
         percentage: '',
         permittedUse: ''
       },
-      lease: {
-        years: 3,
-        months: 0,
-        commencementDate: '',
-        terminationDate: '',
-        optionYears: 3,
-        optionMonths: 0,
-        optionExerciseDate: ''
-      },
+    lease: {
+      years: 3,
+      months: 0,
+      commencementDate: '',
+      terminationDate: '',
+      optionYears: 3,
+      optionMonths: 0,
+      optionExerciseDate: '',
+      beneficialOccupationEnabled: false,
+      beneficialOccupationMonths: 0
+    },
       financial: {
-        year1: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
-        year2: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
-        year3: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
-        year4: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
-        year5: { basicRent: '', security: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+        year1: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+        year2: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+        year3: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+        year4: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
+        year5: { basicRent: '', security: '', cleaning: '', operatingCosts: '', insurance: '', refuse: '', rates: '', sewerageWater: '', from: '', to: '' },
         escalationRate: '6', // Reset to default 6%
         deposit: '',
         depositType: 'held',
+        depositHeldAmount: '',
+        depositPaymentMonths: '',
+        depositPaymentStartDate: '',
+        chargeColumns: {
+          security: true,
+          cleaning: false,
+          operatingCosts: false,
+          insurance: false
+        },
         annexures: { A: true, B: true, C: true, D: true },
         leaseFee: '750.00',
         utilities: 'METERED OR % OF EXPENSE',
@@ -1204,11 +1223,128 @@ localStorage.removeItem('defaultSurety');
     });
   };
 
+  useEffect(() => {
+    const commencementDate = extractedData.lease.commencementDate;
+    if (!commencementDate) return;
+    const boMonths = parseInt(extractedData.lease.beneficialOccupationMonths, 10);
+    let rentalStartDate = commencementDate;
+
+    if (extractedData.lease.beneficialOccupationEnabled && boMonths > 0) {
+      const startDate = new Date(commencementDate);
+      if (!isNaN(startDate.getTime())) {
+        startDate.setMonth(startDate.getMonth() + boMonths);
+        rentalStartDate = startDate.toISOString().split('T')[0];
+      }
+    }
+
+    if (rentalStartDate && rentalStartDate !== extractedData.financial.year1.from) {
+      updateFinancialField('year1', 'from', rentalStartDate);
+    }
+  }, [
+    extractedData.lease.commencementDate,
+    extractedData.lease.beneficialOccupationEnabled,
+    extractedData.lease.beneficialOccupationMonths
+  ]);
+
   const formatCurrency = (amount) => {
-    if (!amount || amount === '') return '';
+    if (amount === null || amount === undefined || amount === '') return '';
     const num = parseFloat(amount.toString().replace(/[^\d.]/g, ''));
     if (isNaN(num)) return '';
     return `R ${num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const parseCurrencyValue = (value) => {
+    if (value === null || value === undefined || value === '') return 0;
+    const num = parseFloat(value.toString().replace(/[^\d.]/g, ''));
+    return isNaN(num) ? 0 : num;
+  };
+
+  const formatDateShort = (dateStr, placeholder = '[DATE]') => {
+    if (!dateStr) return placeholder;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return placeholder;
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const buildDepositTerms = (financial, lease) => {
+    const totalDeposit = parseCurrencyValue(financial.deposit);
+    if (!totalDeposit) return ['N/A'];
+
+    const heldAmount = parseCurrencyValue(financial.depositHeldAmount);
+    const remainingDeposit = Math.max(totalDeposit - heldAmount, 0);
+    const months = parseInt(financial.depositPaymentMonths, 10);
+
+    const lines = [`Deposit required - ${formatCurrency(totalDeposit)}`];
+
+    if (heldAmount > 0) {
+      lines.push(`Deposit held - ${formatCurrency(heldAmount)}`);
+    }
+
+    if (remainingDeposit > 0) {
+      if (financial.depositType === 'over_time' && months && months > 0) {
+        lines.push(`${formatCurrency(remainingDeposit)} - Payable over ${months} month${months === 1 ? '' : 's'} as follows:`);
+        const startDate = financial.depositPaymentStartDate || lease.commencementDate || financial.year1?.from;
+        for (let i = 0; i < months; i += 1) {
+          const paymentDate = startDate ? new Date(startDate) : null;
+          if (paymentDate && !isNaN(paymentDate.getTime())) {
+            paymentDate.setMonth(paymentDate.getMonth() + i);
+          }
+          const paymentAmount = remainingDeposit / months;
+          lines.push(`${formatCurrency(paymentAmount)} - Payable on or before ${formatDateShort(paymentDate ? paymentDate.toISOString() : '', '[DATE]')}`);
+        }
+      } else if (financial.depositType === 'over_time') {
+        lines.push(`${formatCurrency(remainingDeposit)} – DEPOSIT PAYABLE OVER TIME.`);
+      } else if (financial.depositType === 'payable') {
+        lines.push(`${formatCurrency(remainingDeposit)} – DEPOSIT PAYABLE UPON SIGNATURE OF LEASE.`);
+      } else {
+        lines.push(`${formatCurrency(remainingDeposit)} – DEPOSIT HELD.`);
+      }
+    }
+
+    return lines;
+  };
+
+  const formatDepositTerms = (financial, lease, useHTML = false) => {
+    const lines = buildDepositTerms(financial, lease);
+    return useHTML ? lines.join('<br>') : lines.join('\n');
+  };
+
+  const getChargeColumns = (chargeColumns = {}) => {
+    const defaults = {
+      security: true,
+      cleaning: false,
+      operatingCosts: false,
+      insurance: false
+    };
+    return { ...defaults, ...chargeColumns };
+  };
+
+  const getYearFieldValue = (yearNum, field) => {
+    const yearKey = `year${yearNum}`;
+    const yearData = extractedData.financial[yearKey] || {};
+    if (yearNum === 1) {
+      return yearData[field] || '';
+    }
+    if (yearData[field] !== undefined && yearData[field] !== '') {
+      return yearData[field];
+    }
+    return getEscalatedValue(extractedData.financial.year1?.[field], yearNum);
+  };
+
+  const getBeneficialOccupationPeriod = () => {
+    const months = parseInt(extractedData.lease.beneficialOccupationMonths, 10);
+    if (!extractedData.lease.beneficialOccupationEnabled || !months || months <= 0 || !extractedData.lease.commencementDate) {
+      return null;
+    }
+    const startDate = new Date(extractedData.lease.commencementDate);
+    if (isNaN(startDate.getTime())) return null;
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + months);
+    endDate.setDate(endDate.getDate() - 1);
+    return { startDate, endDate };
   };
 
   // Format address - filter out email addresses and phone numbers
@@ -1239,14 +1375,14 @@ localStorage.removeItem('defaultSurety');
   };
 
   const formatCurrencyDisplay = (amount) => {
-    if (!amount || amount === '') return '';
+    if (amount === null || amount === undefined || amount === '') return '';
     const num = parseFloat(amount.toString().replace(/[^\d.]/g, ''));
     if (isNaN(num)) return '';
     return num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   const generateMonthlyRentalTableText = () => {
-    const { financial } = extractedData;
+    const { financial, lease } = extractedData;
     
     const formatDate = (dateStr) => {
       if (!dateStr) return '';
@@ -1257,110 +1393,133 @@ localStorage.removeItem('defaultSurety');
       return `${day}/${month}/${year}`;
     };
 
-    // Create text-based table with underlines
-    const colWidths = [20, 20, 20, 25, 25, 15, 15];
-    const totalWidth = colWidths.reduce((sum, w) => sum + w, 0);
+    const chargeColumns = getChargeColumns(financial.chargeColumns);
+    const ratesDateLabel = financial.ratesEffectiveDate ? formatDate(financial.ratesEffectiveDate) : '01/06/2025';
+    const boPeriod = getBeneficialOccupationPeriod();
 
-    let table = '\n';
-    
-    // Header cells
-    const headers = [
-      'BASIC RENT\nEXCL. VAT',
-      'BASIC RENT\nINCL. VAT',
-      'SECURITY\nEXCL. VAT',
-      '*REFUSE AS AT\n01/06/2025\nEXCL. VAT',
-      '*RATES AS AT\n01/06/2025\nEXCL. VAT',
-      'FROM',
-      'TO'
+    const columns = [
+      {
+        label: 'BASIC RENT\nEXCL. VAT',
+        getValue: ({ rowType, yearNum }) => {
+          const value = rowType === 'beneficial' ? 0 : getYearFieldValue(yearNum, 'basicRent');
+          return formatCurrency(value) || 'R [AMOUNT]';
+        }
+      },
+      {
+        label: 'BASIC RENT\nINCL. VAT',
+        getValue: ({ rowType, yearNum }) => {
+          const value = rowType === 'beneficial' ? 0 : getYearFieldValue(yearNum, 'basicRent');
+          return formatCurrency(calculateVAT(value)) || 'R [AMOUNT]';
+        }
+      },
+      ...(chargeColumns.security ? [{
+        label: 'SECURITY\nEXCL. VAT',
+        getValue: ({ rowType, yearNum }) => {
+          const value = rowType === 'beneficial' ? 0 : getYearFieldValue(yearNum, 'security');
+          return formatCurrency(value) || 'R [AMOUNT]';
+        }
+      }] : []),
+      ...(chargeColumns.cleaning ? [{
+        label: 'CLEANING\nEXCL. VAT',
+        getValue: ({ rowType, yearNum }) => {
+          const value = rowType === 'beneficial' ? 0 : getYearFieldValue(yearNum, 'cleaning');
+          return formatCurrency(value) || 'R [AMOUNT]';
+        }
+      }] : []),
+      ...(chargeColumns.operatingCosts ? [{
+        label: 'OPERATING\nCOSTS\nEXCL. VAT',
+        getValue: ({ rowType, yearNum }) => {
+          const value = rowType === 'beneficial' ? 0 : getYearFieldValue(yearNum, 'operatingCosts');
+          return formatCurrency(value) || 'R [AMOUNT]';
+        }
+      }] : []),
+      ...(chargeColumns.insurance ? [{
+        label: 'INSURANCE\nEXCL. VAT',
+        getValue: ({ rowType, yearNum }) => {
+          const value = rowType === 'beneficial' ? 0 : getYearFieldValue(yearNum, 'insurance');
+          return formatCurrency(value) || 'R [AMOUNT]';
+        }
+      }] : []),
+      {
+        label: `*REFUSE AS AT\n${ratesDateLabel}\nEXCL. VAT`,
+        getValue: ({ rowType, yearNum }) => {
+          const amount = rowType === 'beneficial' ? 0 : getYearFieldValue(yearNum, 'refuse');
+          return `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(amount) || 'R [AMOUNT]'}\np/m`;
+        }
+      },
+      {
+        label: `*RATES AS AT\n${ratesDateLabel}\nEXCL. VAT`,
+        getValue: ({ rowType, yearNum }) => {
+          const amount = rowType === 'beneficial' ? 0 : getYearFieldValue(yearNum, 'rates');
+          return `*${formatCurrency(amount) || 'R [AMOUNT]'}`;
+        }
+      },
+      {
+        label: 'FROM',
+        getValue: ({ rowType, yearNum }) => {
+          if (rowType === 'beneficial' && boPeriod) {
+            return formatDate(boPeriod.startDate.toISOString()) || '[FROM]';
+          }
+          return formatDate(getYearData(yearNum).from) || '[FROM]';
+        }
+      },
+      {
+        label: 'TO',
+        getValue: ({ rowType, yearNum }) => {
+          if (rowType === 'beneficial' && boPeriod) {
+            return formatDate(boPeriod.endDate.toISOString()) || '[TO]';
+          }
+          return formatDate(getYearData(yearNum).to) || '[TO]';
+        }
+      }
     ];
-    
-    const headerLines = headers.map(h => h.split('\n')).reduce((max, arr) => Math.max(max, arr.length), 0);
+
+    const colWidths = columns.map(() => 20);
+    const totalWidth = colWidths.reduce((sum, w) => sum + w, 0);
+    let table = '\n';
+
+    const headerLines = columns
+      .map(col => col.label.split('\n'))
+      .reduce((max, arr) => Math.max(max, arr.length), 0);
     for (let i = 0; i < headerLines; i++) {
-      headers.forEach((header, idx) => {
-        const lines = header.split('\n');
+      columns.forEach((column, idx) => {
+        const lines = column.label.split('\n');
         const cell = lines[i] || '';
         table += cell.padEnd(colWidths[idx]);
       });
       table += '\n';
     }
-    
-    // Underline header
+
     table += '_'.repeat(totalWidth) + '\n';
-    
-    // Year 1 row
-    const year1Cells = [
-      formatCurrency(financial.year1.basicRent) || 'R [AMOUNT]',
-      formatCurrency(calculateVAT(financial.year1.basicRent)) || 'R [AMOUNT]',
-      formatCurrency(financial.year1.security) || 'R [AMOUNT]',
-      `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year1.refuse) || 'R [AMOUNT]'}\np/m`,
-      `*${formatCurrency(financial.year1.rates) || 'R [AMOUNT]'}`,
-      formatDate(financial.year1.from) || '[FROM]',
-      formatDate(financial.year1.to) || '[TO]'
-    ];
-    
-    const year1Lines = year1Cells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
-    for (let i = 0; i < year1Lines; i++) {
-      year1Cells.forEach((cell, idx) => {
-        const lines = cell.split('\n');
-        const cellLine = lines[i] || '';
-        table += cellLine.padEnd(colWidths[idx]);
-      });
-      table += '\n';
+
+    const rows = [];
+    const totalYears = Math.max(1, Math.min(parseInt(lease.years || 1, 10), 5));
+    if (boPeriod) {
+      rows.push({ rowType: 'beneficial', yearNum: 1 });
     }
-    
-    table += '_'.repeat(totalWidth) + '\n';
-    
-    // Year 2 row
-    const year2Cells = [
-      formatCurrency(financial.year2.basicRent) || 'R [AMOUNT]',
-      formatCurrency(calculateVAT(financial.year2.basicRent)) || 'R [AMOUNT]',
-      formatCurrency(financial.year2.security) || 'R [AMOUNT]',
-      `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year2.refuse) || 'R [AMOUNT]'}\np/m`,
-      `*${formatCurrency(financial.year2.rates) || 'R [AMOUNT]'}`,
-      formatDate(financial.year2.from) || '[FROM]',
-      formatDate(financial.year2.to) || '[TO]'
-    ];
-    
-    const year2Lines = year2Cells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
-    for (let i = 0; i < year2Lines; i++) {
-      year2Cells.forEach((cell, idx) => {
-        const lines = cell.split('\n');
-        const cellLine = lines[i] || '';
-        table += cellLine.padEnd(colWidths[idx]);
-      });
-      table += '\n';
+    for (let yearNum = 1; yearNum <= totalYears; yearNum += 1) {
+      rows.push({ rowType: 'year', yearNum });
     }
-    
-    table += '_'.repeat(totalWidth) + '\n';
-    
-    // Year 3 row
-    const year3Cells = [
-      formatCurrency(financial.year3.basicRent) || 'R [AMOUNT]',
-      formatCurrency(calculateVAT(financial.year3.basicRent)) || 'R [AMOUNT]',
-      formatCurrency(financial.year3.security) || 'R [AMOUNT]',
-      `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year3.refuse) || 'R [AMOUNT]'}\np/m`,
-      `*${formatCurrency(financial.year3.rates) || 'R [AMOUNT]'}`,
-      formatDate(financial.year3.from) || '[FROM]',
-      formatDate(financial.year3.to) || '[TO]'
-    ];
-    
-    const year3Lines = year3Cells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
-    for (let i = 0; i < year3Lines; i++) {
-      year3Cells.forEach((cell, idx) => {
-        const lines = cell.split('\n');
-        const cellLine = lines[i] || '';
-        table += cellLine.padEnd(colWidths[idx]);
-      });
-      table += '\n';
-    }
-    
-    table += '_'.repeat(totalWidth) + '\n';
-    
+
+    rows.forEach((row) => {
+      const rowCells = columns.map(column => column.getValue(row));
+      const rowLines = rowCells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
+      for (let i = 0; i < rowLines; i++) {
+        rowCells.forEach((cell, idx) => {
+          const lines = cell.split('\n');
+          const cellLine = lines[i] || '';
+          table += cellLine.padEnd(colWidths[idx]);
+        });
+        table += '\n';
+      }
+      table += '_'.repeat(totalWidth) + '\n';
+    });
+
     return table;
   };
 
   const generateMonthlyRentalTableHTML = () => {
-    const { financial } = extractedData;
+    const { financial, lease } = extractedData;
     
     const formatDate = (dateStr) => {
       if (!dateStr) return '';
@@ -1371,65 +1530,72 @@ localStorage.removeItem('defaultSurety');
       return `${day}/${month}/${year}`;
     };
 
+    const chargeColumns = getChargeColumns(financial.chargeColumns);
+    const ratesDateLabel = financial.ratesEffectiveDate ? formatDate(financial.ratesEffectiveDate) : '01/06/2025';
+    const boPeriod = getBeneficialOccupationPeriod();
+    const totalYears = Math.max(1, Math.min(parseInt(lease.years || 1, 10), 5));
+    const rows = [];
+
+    const columnHeaders = [
+      'BASIC RENT<br>EXCL. VAT',
+      'BASIC RENT<br>INCL. VAT',
+      ...(chargeColumns.security ? ['SECURITY<br>EXCL. VAT'] : []),
+      ...(chargeColumns.cleaning ? ['CLEANING<br>EXCL. VAT'] : []),
+      ...(chargeColumns.operatingCosts ? ['OPERATING COSTS<br>EXCL. VAT'] : []),
+      ...(chargeColumns.insurance ? ['INSURANCE<br>EXCL. VAT'] : []),
+      `*REFUSE AS AT<br>${ratesDateLabel}<br>EXCL. VAT`,
+      `*RATES AS AT<br>${ratesDateLabel}<br>EXCL. VAT`,
+      'FROM',
+      'TO'
+    ];
+
+    const buildRowCells = (rowType, yearNum) => {
+      const isBeneficial = rowType === 'beneficial';
+      const fromDate = isBeneficial && boPeriod ? formatDate(boPeriod.startDate.toISOString()) : formatDate(getYearData(yearNum).from);
+      const toDate = isBeneficial && boPeriod ? formatDate(boPeriod.endDate.toISOString()) : formatDate(getYearData(yearNum).to);
+      const baseRent = isBeneficial ? 0 : getYearFieldValue(yearNum, 'basicRent');
+      const security = isBeneficial ? 0 : getYearFieldValue(yearNum, 'security');
+      const cleaning = isBeneficial ? 0 : getYearFieldValue(yearNum, 'cleaning');
+      const operatingCosts = isBeneficial ? 0 : getYearFieldValue(yearNum, 'operatingCosts');
+      const insurance = isBeneficial ? 0 : getYearFieldValue(yearNum, 'insurance');
+      const refuse = isBeneficial ? 0 : getYearFieldValue(yearNum, 'refuse');
+      const rates = isBeneficial ? 0 : getYearFieldValue(yearNum, 'rates');
+
+      return [
+        formatCurrency(baseRent) || 'R [AMOUNT]',
+        formatCurrency(calculateVAT(baseRent)) || 'R [AMOUNT]',
+        ...(chargeColumns.security ? [formatCurrency(security) || 'R [AMOUNT]'] : []),
+        ...(chargeColumns.cleaning ? [formatCurrency(cleaning) || 'R [AMOUNT]'] : []),
+        ...(chargeColumns.operatingCosts ? [formatCurrency(operatingCosts) || 'R [AMOUNT]'] : []),
+        ...(chargeColumns.insurance ? [formatCurrency(insurance) || 'R [AMOUNT]'] : []),
+        `ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(refuse) || 'R [AMOUNT]'}<br>p/m`,
+        `*${formatCurrency(rates) || 'R [AMOUNT]'}`,
+        fromDate || '[FROM]',
+        toDate || '[TO]'
+      ];
+    };
+
+    if (boPeriod) {
+      rows.push(buildRowCells('beneficial', 1));
+    }
+    for (let yearNum = 1; yearNum <= totalYears; yearNum += 1) {
+      rows.push(buildRowCells('year', yearNum));
+    }
+
+    const rowsHtml = rows.map((cells) => `
+    <tr>
+      ${cells.map(cell => `<td style="padding: 8px; text-align: center; border: 1px solid #999;">${cell}</td>`).join('')}
+    </tr>`).join('');
+
     return `
 <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin: 10px 0;">
   <thead>
     <tr>
-      <th style="background-color: #e0e0e0; padding: 8px; text-align: center; font-weight: bold; border: 1px solid #999;">BASIC RENT<br>EXCL. VAT</th>
-      <th style="background-color: #e0e0e0; padding: 8px; text-align: center; font-weight: bold; border: 1px solid #999;">BASIC RENT<br>INCL. VAT</th>
-      <th style="background-color: #e0e0e0; padding: 8px; text-align: center; font-weight: bold; border: 1px solid #999;">SECURITY<br>EXCL. VAT</th>
-      <th style="background-color: #e0e0e0; padding: 8px; text-align: center; font-weight: bold; border: 1px solid #999;">*REFUSE AS AT<br>01/06/2025<br>EXCL. VAT</th>
-      <th style="background-color: #e0e0e0; padding: 8px; text-align: center; font-weight: bold; border: 1px solid #999;">*RATES AS AT<br>01/06/2025<br>EXCL. VAT</th>
-      <th style="background-color: #e0e0e0; padding: 8px; text-align: center; font-weight: bold; border: 1px solid #999;">FROM</th>
-      <th style="background-color: #e0e0e0; padding: 8px; text-align: center; font-weight: bold; border: 1px solid #999;">TO</th>
+      ${columnHeaders.map(header => `<th style="background-color: #e0e0e0; padding: 8px; text-align: center; font-weight: bold; border: 1px solid #999;">${header}</th>`).join('')}
     </tr>
   </thead>
   <tbody>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year1.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year1.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year1.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year1.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year1.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year1.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year1.to) || '[TO]'}</td>
-    </tr>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year2.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year2.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year2.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year2.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year2.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year2.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year2.to) || '[TO]'}</td>
-    </tr>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year3.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year3.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year3.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year3.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year3.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year3.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year3.to) || '[TO]'}</td>
-    </tr>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year4?.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year4?.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year4?.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year4?.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year4?.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year4?.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year4?.to) || '[TO]'}</td>
-    </tr>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year5?.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year5?.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year5?.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year5?.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year5?.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year5?.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year5?.to) || '[TO]'}</td>
-    </tr>
+    ${rowsHtml}
   </tbody>
 </table>`;
   };
@@ -1469,16 +1635,6 @@ localStorage.removeItem('defaultSurety');
       const month = monthNames[date.getMonth()];
       const year = date.getFullYear();
       return `${day} ${month} ${year}`;
-    };
-
-    // Format date as "31/08/2028"
-    const formatDateShort = (dateStr) => {
-      if (!dateStr) return '[DATE]';
-      const date = new Date(dateStr);
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      return `${day}/${month}/${year}`;
     };
 
     // Format document date
@@ -1553,6 +1709,10 @@ TERMINATION DATE:
 
 ${lease.terminationDate ? formatDateLong(lease.terminationDate) : ''}
 
+BENEFICIAL OCCUPATION:
+
+${lease.beneficialOccupationEnabled ? `YES (${lease.beneficialOccupationMonths || 0} MONTHS)` : 'NO'}
+
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                                                                                             │
 │  1.10 OPTION PERIOD OF LEASE (TO BE EXERCISED BY ${lease.optionExerciseDate ? formatDateShort(lease.optionExerciseDate) : '[EXERCISE DATE]'}) OPTION PERIOD IS TO BE MUTUALLY DETERMINED BY THE PARTIES. IF BUSINESS SOLD LEASE TO BE RENEWED SUBJECT TO APPROVAL OF NEW TENANT BY LANDLORD.  │  YEARS  │  MONTHS  │
@@ -1576,7 +1736,7 @@ ${useHTML ? generateMonthlyRentalTableHTML() : generateMonthlyRentalTableText()}
 
 *INCREASES AS PER RELEVANT MUNICIPAL AUTHORITY/CONTRACTOR IN RATES AND REFUSE TO APPLY ON A PROPORTIONATE BASIS.
 
-1.13 DEPOSIT: ${financial.deposit && parseFloat(financial.deposit) > 0 ? `${formatCurrency(financial.deposit)} – ${financial.depositType === 'payable' ? 'DEPOSIT PAYABLE UPON SIGNATURE OF LEASE.' : 'DEPOSIT HELD.'}` : 'N/A'}
+1.13 DEPOSIT: ${formatDepositTerms(financial, lease, useHTML)}
 
 1.14.1 TURNOVER PERCENTAGE: ${financial.turnoverPercentage || 'N/A'}
 
@@ -1985,6 +2145,12 @@ Generated by Automated Lease Drafting System
       doc.text(value || '', margin + indent, yPosition);
       yPosition += SPACING.field;
     };
+
+    const renderLines = (lines, indent = 20) => {
+      lines.forEach((line) => {
+        renderValue(line, indent);
+      });
+    };
     
     // 1.1 THE LANDLORD
     renderSectionTitle('1.1 THE LANDLORD:');
@@ -2151,6 +2317,9 @@ Generated by Automated Lease Drafting System
     doc.line(margin, tableStartY + headerHeight + rowHeight * 2, margin + tableWidth, tableStartY + headerHeight + rowHeight * 2);
     doc.line(margin, tableStartY + headerHeight + rowHeight * 3, margin + tableWidth, tableStartY + headerHeight + rowHeight * 3);
     
+    yPosition += SPACING.field;
+    renderField('BENEFICIAL OCCUPATION:', lease.beneficialOccupationEnabled ? `YES (${lease.beneficialOccupationMonths || 0} MONTHS)` : 'NO');
+
     yPosition += SPACING.table;
     doc.setFontSize(10);
     
@@ -2181,7 +2350,27 @@ Generated by Automated Lease Drafting System
     yPosition += SPACING.sectionTitle + SPACING.table;
     
     const tableMargin = margin;
-    const rentalColWidth = (pageWidth - 2 * tableMargin) / 7;
+    const formatDatePDF = (dateStr) => {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+    };
+    const chargeColumns = getChargeColumns(financial.chargeColumns);
+    const ratesDateLabel = financial.ratesEffectiveDate ? formatDatePDF(financial.ratesEffectiveDate) : '01/06/2025';
+    const boPeriod = getBeneficialOccupationPeriod();
+    const headers = [
+      'BASIC RENT\nEXCL. VAT',
+      'BASIC RENT\nINCL. VAT',
+      ...(chargeColumns.security ? ['SECURITY\nEXCL. VAT'] : []),
+      ...(chargeColumns.cleaning ? ['CLEANING\nEXCL. VAT'] : []),
+      ...(chargeColumns.operatingCosts ? ['OPERATING COSTS\nEXCL. VAT'] : []),
+      ...(chargeColumns.insurance ? ['INSURANCE\nEXCL. VAT'] : []),
+      `*REFUSE AS AT\n${ratesDateLabel}\nEXCL. VAT`,
+      `*RATES AS AT\n${ratesDateLabel}\nEXCL. VAT`,
+      'FROM',
+      'TO'
+    ];
+    const rentalColWidth = (pageWidth - 2 * tableMargin) / headers.length;
     const rentalHeaderHeight = 20;
     
     // Table header
@@ -2190,9 +2379,6 @@ Generated by Automated Lease Drafting System
     
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    const headers = ['BASIC RENT\nEXCL. VAT', 'BASIC RENT\nINCL. VAT', 'SECURITY\nEXCL. VAT', 
-                     '*REFUSE AS AT\n01/06/2025\nEXCL. VAT', 
-                     '*RATES AS AT\n01/06/2025\nEXCL. VAT', 'FROM', 'TO'];
     
     headers.forEach((header, i) => {
       const xPos = tableMargin + i * rentalColWidth;
@@ -2204,44 +2390,45 @@ Generated by Automated Lease Drafting System
     // Table rows
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    const formatDatePDF = (dateStr) => {
-      if (!dateStr) return '';
-      const date = new Date(dateStr);
-      return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
-    };
     
-    // Build rows dynamically based on lease years
+    const buildRow = (rowType, yearNum) => {
+      const isBeneficial = rowType === 'beneficial';
+      const baseRent = isBeneficial ? 0 : getYearFieldValue(yearNum, 'basicRent');
+      const security = isBeneficial ? 0 : getYearFieldValue(yearNum, 'security');
+      const cleaning = isBeneficial ? 0 : getYearFieldValue(yearNum, 'cleaning');
+      const operatingCosts = isBeneficial ? 0 : getYearFieldValue(yearNum, 'operatingCosts');
+      const insurance = isBeneficial ? 0 : getYearFieldValue(yearNum, 'insurance');
+      const refuse = isBeneficial ? 0 : getYearFieldValue(yearNum, 'refuse');
+      const rates = isBeneficial ? 0 : getYearFieldValue(yearNum, 'rates');
+      const fromDate = isBeneficial && boPeriod ? formatDatePDF(boPeriod.startDate.toISOString()) : formatDatePDF(getYearData(yearNum).from);
+      const toDate = isBeneficial && boPeriod ? formatDatePDF(boPeriod.endDate.toISOString()) : formatDatePDF(getYearData(yearNum).to);
+
+      return [
+        formatCurrency(baseRent),
+        formatCurrency(calculateVAT(baseRent)),
+        ...(chargeColumns.security ? [formatCurrency(security)] : []),
+        ...(chargeColumns.cleaning ? [formatCurrency(cleaning)] : []),
+        ...(chargeColumns.operatingCosts ? [formatCurrency(operatingCosts)] : []),
+        ...(chargeColumns.insurance ? [formatCurrency(insurance)] : []),
+        `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(refuse)}\np/m`,
+        `*${formatCurrency(rates)}`,
+        fromDate,
+        toDate
+      ];
+    };
+
+    const rows = [];
     const leaseYears = parseInt(lease.years) || 0;
     const leaseMonths = parseInt(lease.months) || 0;
     const totalYears = leaseYears + (leaseMonths > 0 ? 1 : 0);
+    if (boPeriod) {
+      rows.push(buildRow('beneficial', 1));
+    }
+    for (let yearNum = 1; yearNum <= Math.max(totalYears, 1); yearNum += 1) {
+      rows.push(buildRow('year', yearNum));
+    }
     
-    const allRows = [
-      [formatCurrency(financial.year1.basicRent), formatCurrency(calculateVAT(financial.year1.basicRent)), 
-       formatCurrency(financial.year1.security), `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year1.refuse)}\np/m`,
-       `*${formatCurrency(financial.year1.rates)}`,
-       formatDatePDF(financial.year1.from), formatDatePDF(financial.year1.to)],
-      [formatCurrency(financial.year2.basicRent), formatCurrency(calculateVAT(financial.year2.basicRent)),
-       formatCurrency(financial.year2.security), `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year2.refuse)}\np/m`,
-       `*${formatCurrency(financial.year2.rates)}`,
-       formatDatePDF(financial.year2.from), formatDatePDF(financial.year2.to)],
-      [formatCurrency(financial.year3.basicRent), formatCurrency(calculateVAT(financial.year3.basicRent)),
-       formatCurrency(financial.year3.security), `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year3.refuse)}\np/m`,
-       `*${formatCurrency(financial.year3.rates)}`,
-       formatDatePDF(financial.year3.from), formatDatePDF(financial.year3.to)],
-      [formatCurrency(financial.year4?.basicRent), formatCurrency(calculateVAT(financial.year4?.basicRent)),
-       formatCurrency(financial.year4?.security), `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year4?.refuse)}\np/m`,
-       `*${formatCurrency(financial.year4?.rates)}`,
-       formatDatePDF(financial.year4?.from), formatDatePDF(financial.year4?.to)],
-      [formatCurrency(financial.year5?.basicRent), formatCurrency(calculateVAT(financial.year5?.basicRent)),
-       formatCurrency(financial.year5?.security), `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year5?.refuse)}\np/m`,
-       `*${formatCurrency(financial.year5?.rates)}`,
-       formatDatePDF(financial.year5?.from), formatDatePDF(financial.year5?.to)]
-    ];
-    
-    // Only show rows based on initial lease period (section 1.9)
-    const rows = allRows.slice(0, Math.max(totalYears, 1));
-    
-    rows.forEach((row, rowIndex) => {
+    rows.forEach((row) => {
       checkPageBreak(25);
       const rentalRowHeight = 22;
       const startY = yPosition;
@@ -2254,7 +2441,7 @@ Generated by Automated Lease Drafting System
       // Draw borders
       doc.setDrawColor(0, 0, 0);
       doc.setLineWidth(0.5);
-      for (let i = 0; i <= 7; i++) {
+      for (let i = 0; i <= headers.length; i++) {
         const x = tableMargin + i * rentalColWidth;
         doc.line(x, startY, x, startY + rentalRowHeight);
       }
@@ -2278,7 +2465,7 @@ Generated by Automated Lease Drafting System
     // Remaining sections
     yPosition += SPACING.section;
     renderSectionTitle('1.13 DEPOSIT:');
-    renderValue(financial.deposit && parseFloat(financial.deposit) > 0 ? `${formatCurrency(financial.deposit)} – ${financial.depositType === 'payable' ? 'DEPOSIT PAYABLE UPON SIGNATURE OF LEASE.' : 'DEPOSIT HELD.'}` : 'N/A');
+    renderLines(buildDepositTerms(financial, lease));
     
     yPosition += SPACING.field;
     doc.setFont('helvetica', 'bold');
@@ -2661,6 +2848,30 @@ Generated by Automated Lease Drafting System
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} />;
   }
+
+  const chargeColumns = getChargeColumns(extractedData.financial.chargeColumns);
+  const rentalColumnTemplate = [
+    '1fr',
+    '1fr',
+    ...(chargeColumns.security ? ['1fr'] : []),
+    ...(chargeColumns.cleaning ? ['1fr'] : []),
+    ...(chargeColumns.operatingCosts ? ['1fr'] : []),
+    ...(chargeColumns.insurance ? ['1fr'] : []),
+    '1.3fr',
+    '1fr',
+    '1fr',
+    '1fr'
+  ].join(' ');
+  const rentalYearColumnTemplate = [
+    '1.2fr',
+    '1.2fr',
+    ...(chargeColumns.security ? ['1.2fr'] : []),
+    ...(chargeColumns.cleaning ? ['1.2fr'] : []),
+    ...(chargeColumns.operatingCosts ? ['1.2fr'] : []),
+    ...(chargeColumns.insurance ? ['1.2fr'] : []),
+    '1fr',
+    '1fr'
+  ].join(' ');
 
   return (
     <>
@@ -3756,323 +3967,6 @@ Generated by Automated Lease Drafting System
               )}
             </div>
 
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <Upload className="text-blue-600" size={24} />
-                  Upload Documents
-                </h2>
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
-                  <FileCheck className="text-blue-600" size={16} />
-                  <span className="text-sm font-semibold text-blue-700">
-                    {uploadedDocumentsCount} {uploadedDocumentsCount === 1 ? 'Document' : 'Documents'}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Landlord CIPC Document
-                  </label>
-                  {verificationStatus.landlordCIPC.verified && (
-                    <div className="flex items-center gap-1 text-xs text-green-600">
-                      <FileCheck size={14} />
-                      <span>Verified</span>
-                    </div>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.txt"
-                  multiple
-                  onChange={(e) => handleFileUpload('landlordCIPC', e.target.files)}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-                {documents.landlordCIPC && documents.landlordCIPC.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {documents.landlordCIPC.map((file, index) => (
-                      <div key={index} className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2 text-sm text-green-700 flex-1 min-w-0">
-                            <CheckCircle size={16} className="flex-shrink-0" />
-                            <span className="truncate font-medium">{file.name}</span>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveDocument('landlordCIPC', index)}
-                            className="ml-2 p-1 text-red-600 hover:bg-red-100 rounded transition flex-shrink-0"
-                            title="Remove document"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        {verificationStatus.landlordCIPC.regNo && index === 0 && (
-                          <div className="mt-2 pl-6 text-xs text-gray-700">
-                            <span className="font-semibold">Registration No:</span> <span className="font-mono">{verificationStatus.landlordCIPC.regNo}</span>
-                          </div>
-                        )}
-                        {verificationStatus.landlordCIPC.verified && verificationStatus.landlordCIPC.date && index === 0 && (
-                          <div className="mt-1 pl-6 text-xs text-gray-500">
-                            Verified: {new Date(verificationStatus.landlordCIPC.date).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {processing.landlordCIPC && (
-                  <div className="mt-2 text-sm text-blue-600">Processing...</div>
-                )}
-                {processingErrors.landlordCIPC && (
-                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={16} />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-red-800">Processing Error</p>
-                        <p className="text-sm text-red-700 mt-1">{processingErrors.landlordCIPC}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Tenant CIPC Document *
-                  </label>
-                  {verificationStatus.tenantCIPC.verified && (
-                    <div className="flex items-center gap-1 text-xs text-green-600">
-                      <FileCheck size={14} />
-                      <span>Verified</span>
-                    </div>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.txt"
-                  multiple
-                  onChange={(e) => handleFileUpload('tenantCIPC', e.target.files)}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-                {documents.tenantCIPC && documents.tenantCIPC.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {documents.tenantCIPC.map((file, index) => (
-                      <div key={index} className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2 text-sm text-green-700 flex-1 min-w-0">
-                            <CheckCircle size={16} className="flex-shrink-0" />
-                            <span className="truncate font-medium">{file.name}</span>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveDocument('tenantCIPC', index)}
-                            className="ml-2 p-1 text-red-600 hover:bg-red-100 rounded transition flex-shrink-0"
-                            title="Remove document"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        {verificationStatus.tenantCIPC.regNo && index === 0 && (
-                          <div className="mt-2 pl-6 text-xs text-gray-600">
-                            <span className="font-medium">Registration No:</span> {verificationStatus.tenantCIPC.regNo}
-                          </div>
-                        )}
-                        {verificationStatus.tenantCIPC.verified && verificationStatus.tenantCIPC.date && index === 0 && (
-                          <div className="mt-1 pl-6 text-xs text-gray-500">
-                            Verified: {new Date(verificationStatus.tenantCIPC.date).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {processing.tenantCIPC && (
-                  <div className="mt-2 text-sm text-blue-600">Processing...</div>
-                )}
-                {processingErrors.tenantCIPC && (
-                  <div className="mt-2 text-sm text-red-600">{processingErrors.tenantCIPC}</div>
-                )}
-              </div>
-
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Tenant ID Document
-                  </label>
-                  {verificationStatus.tenantID.verified && (
-                    <div className="flex items-center gap-1 text-xs text-green-600">
-                      <FileCheck size={14} />
-                      <span>Verified</span>
-                    </div>
-                  )}
-                </div>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.txt"
-                  multiple
-                  onChange={(e) => handleFileUpload('tenantID', e.target.files)}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-                {documents.tenantID && documents.tenantID.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {documents.tenantID.map((file, index) => (
-                      <div key={index} className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2 text-sm text-green-700 flex-1 min-w-0">
-                            <CheckCircle size={16} className="flex-shrink-0" />
-                            <span className="truncate font-medium">{file.name}</span>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveDocument('tenantID', index)}
-                            className="ml-2 p-1 text-red-600 hover:bg-red-100 rounded transition flex-shrink-0"
-                            title="Remove document"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        {verificationStatus.tenantID.idNumber && index === 0 && (
-                          <div className="mt-2 pl-6 text-xs text-gray-600">
-                            <span className="font-medium">ID Number:</span> {verificationStatus.tenantID.idNumber}
-                          </div>
-                        )}
-                        {verificationStatus.tenantID.verified && verificationStatus.tenantID.date && index === 0 && (
-                          <div className="mt-1 pl-6 text-xs text-gray-500">
-                            Verified: {new Date(verificationStatus.tenantID.date).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {processing.tenantID && (
-                  <div className="mt-2 text-sm text-blue-600">Processing...</div>
-                )}
-                {processingErrors.tenantID && (
-                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={16} />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-red-800">Processing Error</p>
-                        <p className="text-sm text-red-700 mt-1">{processingErrors.tenantID}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* HIDDEN: Or Paste FICA Document Text - Not used for now
-              <div className="mb-4 p-4 bg-blue-50 rounded-lg border-2 border-dashed border-blue-300">
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                  <Clipboard className="text-blue-600" size={18} />
-                  Or Paste FICA Document Text
-                </label>
-                <textarea
-                  value={pastedFicaText}
-                  onChange={(e) => setPastedFicaText(e.target.value)}
-                  placeholder="Paste FICA document text here (Ctrl+V)..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  rows={18}
-                  style={{ minHeight: '400px' }}
-                />
-                <button
-                  onClick={handlePasteFica}
-                  disabled={processing.pastedFica || !pastedFicaText.trim()}
-                  className="mt-2 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {processing.pastedFica ? (
-                    <>
-                      <AlertCircle size={16} className="animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <Clipboard size={16} />
-                      Extract Data from Pasted Text
-                    </>
-                  )}
-                </button>
-                {processingErrors.pastedFica && (
-                  <div className="mt-2 text-sm text-red-600 flex items-center gap-1">
-                    <AlertCircle size={14} />
-                    {processingErrors.pastedFica}
-                  </div>
-                )}
-                {!processing.pastedFica && !processingErrors.pastedFica && pastedFicaText.trim() && (
-                  <div className="mt-2 text-xs text-gray-500">
-                    Click "Extract Data" to populate tenant fields from the pasted text.
-                  </div>
-                )}
-              </div>
-              */}
-
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Surety ID Document *
-                </label>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.txt"
-                  multiple
-                  onChange={(e) => handleFileUpload('suretyID', e.target.files)}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-                {documents.suretyID && documents.suretyID.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    {documents.suretyID.map((file, index) => (
-                      <div key={index} className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2 text-sm text-green-700 flex-1 min-w-0">
-                            <CheckCircle size={16} className="flex-shrink-0" />
-                            <span className="truncate font-medium">{file.name}</span>
-                          </div>
-                          <button
-                            onClick={() => handleRemoveDocument('suretyID', index)}
-                            className="ml-2 p-1 text-red-600 hover:bg-red-100 rounded transition flex-shrink-0"
-                            title="Remove document"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        {verificationStatus.suretyID.idNumber && index === 0 && (
-                          <div className="mt-2 pl-6 text-xs text-gray-600">
-                            <span className="font-medium">ID Number:</span> {verificationStatus.suretyID.idNumber}
-                          </div>
-                        )}
-                        {verificationStatus.suretyID.verified && verificationStatus.suretyID.date && index === 0 && (
-                          <div className="mt-1 pl-6 text-xs text-gray-500">
-                            Verified: {new Date(verificationStatus.suretyID.date).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {processing.suretyID && (
-                  <div className="mt-2 text-sm text-blue-600">Processing...</div>
-                )}
-                {processingErrors.suretyID && (
-                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={16} />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-red-800">Processing Error</p>
-                        <p className="text-sm text-red-700 mt-1">{processingErrors.suretyID}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {(processing.landlordCIPC || processing.tenantCIPC || processing.tenantID || processing.suretyID) && (
-                <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-center gap-2 text-blue-700">
-                  <AlertCircle size={20} />
-                  <span className="text-sm">Processing documents...</span>
-                </div>
-              )}
-            </div>
-          </div>
-
           <div className="lg:col-span-2 space-y-4">
             {/* 1.1 Landlord Information Section */}
             <div className="bg-white rounded-xl shadow-lg p-6">
@@ -4081,37 +3975,6 @@ Generated by Automated Lease Drafting System
                   <Building className="text-purple-600" size={24} />
                   1.1 THE LANDLORD
                 </h2>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hasDefaultLandlord}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        // Check if landlord data exists
-                        const landlordName = extractedData?.landlord?.name;
-                        if (!landlordName || landlordName.trim() === '') {
-                          toast.warning('Please fill in landlord information first before setting as default.');
-                          e.target.checked = false;
-                          return;
-                        }
-                        // Save as default
-                        localStorage.setItem('defaultLandlord', JSON.stringify(extractedData.landlord));
-                        setHasDefaultLandlord(true);
-                        toast.success('Default landlord saved!');
-                      } else {
-                        // Remove default
-                        localStorage.removeItem('defaultLandlord');
-                        setHasDefaultLandlord(false);
-                        toast.success('Default landlord removed');
-                      }
-                    }}
-                    className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-                  />
-                  <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                    <Star size={16} fill={hasDefaultLandlord ? 'currentColor' : 'none'} className={hasDefaultLandlord ? 'text-yellow-500' : 'text-gray-400'} />
-                    Save as Default
-                  </span>
-                </label>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <input
@@ -4292,9 +4155,10 @@ Generated by Automated Lease Drafting System
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">YEARS</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={extractedData.lease.years}
-                    onChange={(e) => updateField('lease', 'years', parseInt(e.target.value) || 0)}
+                    onChange={(e) => updateField('lease', 'years', parseInt(e.target.value, 10) || 0)}
                     placeholder="3"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
@@ -4302,9 +4166,10 @@ Generated by Automated Lease Drafting System
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">MONTHS</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={extractedData.lease.months}
-                    onChange={(e) => updateField('lease', 'months', parseInt(e.target.value) || 0)}
+                    onChange={(e) => updateField('lease', 'months', parseInt(e.target.value, 10) || 0)}
                     placeholder="0"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
@@ -4327,6 +4192,33 @@ Generated by Automated Lease Drafting System
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="beneficialOccupation"
+                      type="checkbox"
+                      checked={extractedData.lease.beneficialOccupationEnabled}
+                      onChange={(e) => updateField('lease', 'beneficialOccupationEnabled', e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded"
+                    />
+                    <label htmlFor="beneficialOccupation" className="text-sm font-medium text-gray-700">
+                      Beneficial Occupation (B/O)
+                    </label>
+                  </div>
+                  {extractedData.lease.beneficialOccupationEnabled && (
+                    <div className="mt-3 max-w-xs">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">B/O MONTHS</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={extractedData.lease.beneficialOccupationMonths}
+                        onChange={(e) => updateField('lease', 'beneficialOccupationMonths', parseInt(e.target.value, 10) || 0)}
+                        placeholder="e.g. 2"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -4343,9 +4235,10 @@ Generated by Automated Lease Drafting System
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">YEARS</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={extractedData.lease.optionYears}
-                    onChange={(e) => updateField('lease', 'optionYears', parseInt(e.target.value) || 0)}
+                    onChange={(e) => updateField('lease', 'optionYears', parseInt(e.target.value, 10) || 0)}
                     placeholder="3"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
@@ -4353,9 +4246,10 @@ Generated by Automated Lease Drafting System
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">MONTHS</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={extractedData.lease.optionMonths}
-                    onChange={(e) => updateField('lease', 'optionMonths', parseInt(e.target.value) || 0)}
+                    onChange={(e) => updateField('lease', 'optionMonths', parseInt(e.target.value, 10) || 0)}
                     placeholder="0"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
@@ -4455,13 +4349,175 @@ Generated by Automated Lease Drafting System
                 </div>
               </div>
 
-              {/* Compact Note */}
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-                <p className="text-xs text-gray-700">
-                  💡 <strong>Tip:</strong> The "AS AT" date for RATES and REFUSE fields is set inline with each field label below.
-                </p>
+              <div className="mb-4 p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+                <p className="text-sm font-bold text-gray-900 mb-3">Include columns in 1.12</p>
+                <div className="flex flex-wrap gap-4 text-sm text-gray-700">
+                  {(['security', 'cleaning', 'operatingCosts', 'insurance']).map((key) => (
+                    <label key={key} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={getChargeColumns(extractedData.financial.chargeColumns)[key]}
+                        onChange={(e) => {
+                          const current = getChargeColumns(extractedData.financial.chargeColumns);
+                          updateField('financial', 'chargeColumns', { ...current, [key]: e.target.checked });
+                        }}
+                        className="w-4 h-4 text-blue-600 rounded"
+                      />
+                      <span className="capitalize">
+                        {key === 'operatingCosts' ? 'Operating costs' : key}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </div>
-              
+
+              {(() => {
+                const boPeriod = getBeneficialOccupationPeriod();
+                if (!boPeriod) return null;
+                const boFrom = boPeriod.startDate.toISOString().split('T')[0];
+                const boTo = boPeriod.endDate.toISOString().split('T')[0];
+
+                return (
+                  <div className="mb-6 p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl shadow-sm border border-gray-200">
+                    <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+                      <span className="text-xl">🅱️</span>
+                      <span className="text-base">Beneficial Occupation (R0.00)</span>
+                    </h3>
+                    <div className="grid gap-2" style={{ gridTemplateColumns: rentalColumnTemplate, alignItems: 'end' }}>
+                      <div>
+                        <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                          BASIC RENT<br/>EXCL. VAT
+                        </div>
+                        <input
+                          type="text"
+                          value={formatCurrency(0)}
+                          readOnly
+                          className="w-full h-9 px-2 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                          BASIC RENT<br/>INCL. VAT
+                        </div>
+                        <input
+                          type="text"
+                          value={formatCurrency(0)}
+                          readOnly
+                          className="w-full h-9 px-2 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                        />
+                      </div>
+                      {chargeColumns.security && (
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                            SECURITY<br/>EXCL. VAT
+                          </div>
+                          <input
+                            type="text"
+                            value={formatCurrency(0)}
+                            readOnly
+                            className="w-full h-9 px-2 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                          />
+                        </div>
+                      )}
+                      {chargeColumns.cleaning && (
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                            CLEANING<br/>EXCL. VAT
+                          </div>
+                          <input
+                            type="text"
+                            value={formatCurrency(0)}
+                            readOnly
+                            className="w-full h-9 px-2 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                          />
+                        </div>
+                      )}
+                      {chargeColumns.operatingCosts && (
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                            OPERATING<br/>COSTS<br/>EXCL. VAT
+                          </div>
+                          <input
+                            type="text"
+                            value={formatCurrency(0)}
+                            readOnly
+                            className="w-full h-9 px-2 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                          />
+                        </div>
+                      )}
+                      {chargeColumns.insurance && (
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                            INSURANCE<br/>EXCL. VAT
+                          </div>
+                          <input
+                            type="text"
+                            value={formatCurrency(0)}
+                            readOnly
+                            className="w-full h-9 px-2 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                          />
+                        </div>
+                      )}
+                      <div className="bg-amber-50 p-2 rounded-lg border border-amber-200" style={{ alignSelf: 'stretch' }}>
+                        <div className="text-[9px] font-bold text-gray-700 text-center mb-1 leading-tight uppercase">
+                          ELECTRICITY<br/>SEWERAGE & WATER<br/>
+                          <span className="text-orange-700">*REFUSE AS AT</span>
+                        </div>
+                        <div className="text-[9px] font-bold text-orange-700 text-center mb-1">EXCL. VAT</div>
+                        <input
+                          type="text"
+                          value={formatCurrency(0)}
+                          readOnly
+                          className="w-full h-9 px-2 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-amber-300 rounded"
+                        />
+                        <div className="relative h-9 mt-1">
+                          <input
+                            type="text"
+                            value={formatCurrency(0)}
+                            readOnly
+                            className="w-full h-9 px-2 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-amber-300 rounded"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-gray-700 text-center mb-1 leading-tight uppercase">
+                          *RATES AS AT
+                        </div>
+                        <div className="text-[10px] font-bold text-gray-700 text-center mb-2">EXCL. VAT</div>
+                        <input
+                          type="text"
+                          value={formatCurrency(0)}
+                          readOnly
+                          className="w-full h-9 px-2 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-gray-700 text-center mb-2 uppercase min-h-[32px] flex items-center justify-center">
+                          FROM
+                        </div>
+                        <input
+                          type="date"
+                          value={boFrom}
+                          readOnly
+                          className="w-full h-9 px-2 text-xs font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-gray-700 text-center mb-2 uppercase min-h-[32px] flex items-center justify-center">
+                          TO
+                        </div>
+                        <input
+                          type="date"
+                          value={boTo}
+                          readOnly
+                          className="w-full h-9 px-2 text-xs font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl shadow-sm border border-blue-200">
                 <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
                   <span className="text-xl">📅</span>
@@ -4469,7 +4525,7 @@ Generated by Automated Lease Drafting System
                 </h3>
                 
                 {/* Compact 7 Column Grid */}
-                <div className="grid gap-2" style={{gridTemplateColumns: '1fr 1fr 1fr 1.3fr 1fr 1fr 1fr', alignItems: 'end'}}>
+                <div className="grid gap-2" style={{gridTemplateColumns: rentalColumnTemplate, alignItems: 'end'}}>
                   {/* Column 1: BASIC RENT EXCL. VAT */}
                   <div>
                     <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
@@ -4504,21 +4560,77 @@ Generated by Automated Lease Drafting System
                   </div>
                   
                   {/* Column 3: SECURITY EXCL. VAT */}
-                  <div>
-                    <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
-                      SECURITY<br/>EXCL. VAT
+                  {chargeColumns.security && (
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                        SECURITY<br/>EXCL. VAT
+                      </div>
+                      <div className="relative h-9">
+                        <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
+                        <input
+                          type="text"
+                          placeholder="1033.18"
+                          value={extractedData.financial.year1.security || ''}
+                          onChange={(e) => updateFinancialField('year1', 'security', e.target.value)}
+                          className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-900 bg-white border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
                     </div>
-                    <div className="relative h-9">
-                      <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
-                      <input
-                        type="text"
-                        placeholder="1033.18"
-                        value={extractedData.financial.year1.security || ''}
-                        onChange={(e) => updateFinancialField('year1', 'security', e.target.value)}
-                        className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-900 bg-white border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
+                  )}
+
+                  {chargeColumns.cleaning && (
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                        CLEANING<br/>EXCL. VAT
+                      </div>
+                      <div className="relative h-9">
+                        <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
+                        <input
+                          type="text"
+                          placeholder="0.00"
+                          value={extractedData.financial.year1.cleaning || ''}
+                          onChange={(e) => updateFinancialField('year1', 'cleaning', e.target.value)}
+                          className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-900 bg-white border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {chargeColumns.operatingCosts && (
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                        OPERATING<br/>COSTS<br/>EXCL. VAT
+                      </div>
+                      <div className="relative h-9">
+                        <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
+                        <input
+                          type="text"
+                          placeholder="0.00"
+                          value={extractedData.financial.year1.operatingCosts || ''}
+                          onChange={(e) => updateFinancialField('year1', 'operatingCosts', e.target.value)}
+                          className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-900 bg-white border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {chargeColumns.insurance && (
+                    <div>
+                      <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                        INSURANCE<br/>EXCL. VAT
+                      </div>
+                      <div className="relative h-9">
+                        <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
+                        <input
+                          type="text"
+                          placeholder="0.00"
+                          value={extractedData.financial.year1.insurance || ''}
+                          onChange={(e) => updateFinancialField('year1', 'insurance', e.target.value)}
+                          className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-900 bg-white border-2 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Column 4: ELECTRICITY SEWERAGE & WATER + *REFUSE AS AT (COMBINED) - HIGHLIGHTED */}
                   <div className="bg-amber-50 p-2 rounded-lg border border-amber-200" style={{alignSelf: 'stretch'}}>
@@ -4634,7 +4746,7 @@ Generated by Automated Lease Drafting System
                       <span className="text-base">Year {yearNum} (Auto-escalated {extractedData.financial.escalationRate || '6'}%)</span>
                     </h3>
                   
-                    <div className="grid gap-3" style={{gridTemplateColumns: '1.2fr 1.2fr 1.2fr 1fr 1fr', alignItems: 'end'}}>
+                    <div className="grid gap-3" style={{gridTemplateColumns: rentalYearColumnTemplate, alignItems: 'end'}}>
                       <div>
                         <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
                           BASIC RENT<br/>EXCL. VAT
@@ -4666,20 +4778,70 @@ Generated by Automated Lease Drafting System
                           />
                         </div>
                       </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
-                          SECURITY<br/>EXCL. VAT
+                      {chargeColumns.security && (
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                            SECURITY<br/>EXCL. VAT
+                          </div>
+                          <div className="relative h-9">
+                            <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
+                            <input
+                              type="text"
+                              value={getYearFieldValue(yearNum, 'security') || ''}
+                              readOnly
+                              className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                            />
+                          </div>
                         </div>
-                        <div className="relative h-9">
-                          <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
-                          <input
-                            type="text"
-                            value={getEscalatedValue(extractedData.financial.year1.security, yearNum) || ''}
-                            readOnly
-                            className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
-                          />
+                      )}
+                      {chargeColumns.cleaning && (
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                            CLEANING<br/>EXCL. VAT
+                          </div>
+                          <div className="relative h-9">
+                            <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
+                            <input
+                              type="text"
+                              value={getYearFieldValue(yearNum, 'cleaning') || ''}
+                              readOnly
+                              className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                            />
+                          </div>
                         </div>
-                      </div>
+                      )}
+                      {chargeColumns.operatingCosts && (
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                            OPERATING<br/>COSTS<br/>EXCL. VAT
+                          </div>
+                          <div className="relative h-9">
+                            <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
+                            <input
+                              type="text"
+                              value={getYearFieldValue(yearNum, 'operatingCosts') || ''}
+                              readOnly
+                              className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {chargeColumns.insurance && (
+                        <div>
+                          <div className="text-[10px] font-bold text-gray-700 text-center mb-2 leading-tight uppercase min-h-[32px] flex items-center justify-center">
+                            INSURANCE<br/>EXCL. VAT
+                          </div>
+                          <div className="relative h-9">
+                            <span className="absolute left-1 top-1/2 -translate-y-1/2 text-gray-600 font-semibold text-[11px] pointer-events-none z-10">R</span>
+                            <input
+                              type="text"
+                              value={getYearFieldValue(yearNum, 'insurance') || ''}
+                              readOnly
+                              className="w-full h-9 pl-4 pr-1.5 text-sm font-semibold text-gray-700 bg-gray-50 border-2 border-gray-300 rounded"
+                            />
+                          </div>
+                        </div>
+                      )}
                       <div>
                         <div className="text-[10px] font-bold text-gray-700 text-center mb-2 uppercase min-h-[32px] flex items-center justify-center">
                           FROM
@@ -4761,6 +4923,7 @@ Generated by Automated Lease Drafting System
                             >
                               <option value="held">– DEPOSIT HELD.</option>
                               <option value="payable">– DEPOSIT PAYABLE UPON SIGNATURE OF LEASE.</option>
+                              <option value="over_time">– DEPOSIT PAYABLE OVER TIME.</option>
                             </select>
                             <p className="text-xs text-green-600 mt-1 ml-1">✓ Select deposit status</p>
                           </div>
@@ -4768,6 +4931,58 @@ Generated by Automated Lease Drafting System
                       })()}
                     </div>
                   </div>
+                  {extractedData.financial?.depositType === 'over_time' && (
+                    <>
+                      <div className="mt-4 grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-gray-700 block mb-1">Deposit held (optional)</label>
+                          <div className="relative">
+                            <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600 font-medium text-xs">R</span>
+                            <input
+                              type="text"
+                              placeholder="0.00"
+                              value={extractedData.financial?.depositHeldAmount || ''}
+                              onChange={(e) => updateField('financial', 'depositHeldAmount', e.target.value)}
+                              className="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-700 block mb-1">Payable over (months)</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="e.g. 5"
+                            value={extractedData.financial?.depositPaymentMonths || ''}
+                            onChange={(e) => updateField('financial', 'depositPaymentMonths', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-gray-700 block mb-1">First payment due</label>
+                          <input
+                            type="date"
+                            value={extractedData.financial?.depositPaymentStartDate || ''}
+                            onChange={(e) => updateField('financial', 'depositPaymentStartDate', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                      {(() => {
+                        const totalDeposit = parseCurrencyValue(extractedData.financial?.deposit);
+                        const heldAmount = parseCurrencyValue(extractedData.financial?.depositHeldAmount);
+                        const months = parseInt(extractedData.financial?.depositPaymentMonths || 0, 10);
+                        const remaining = Math.max(totalDeposit - heldAmount, 0);
+                        if (!remaining || !months) return null;
+                        const perMonth = remaining / months;
+                        return (
+                          <p className="text-xs text-gray-600 mt-2">
+                            Remaining deposit of {formatCurrency(remaining)} will be split into {months} payment{months === 1 ? '' : 's'} of {formatCurrency(perMonth)} each.
+                          </p>
+                        );
+                      })()}
+                    </>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 items-center p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500">
@@ -4825,15 +5040,45 @@ Generated by Automated Lease Drafting System
                   <label className="text-sm font-bold text-gray-900">
                     1.16 THE FOLLOWING LEASE FEES SHALL BE PAYABLE BY THE TENANT ON SIGNATURE OF THIS LEASE (EXCL. VAT)
                   </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-600 font-medium">R</span>
-                    <input
-                      type="text"
-                      placeholder="e.g. 750.00"
-                      value={extractedData.financial.leaseFee}
-                      onChange={(e) => updateField('financial', 'leaseFee', e.target.value)}
-                      className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                  <div className="flex flex-col gap-2">
+                    {(() => {
+                      const leaseFeeValue = extractedData.financial.leaseFee ?? '';
+                      const normalizedLeaseFee = leaseFeeValue.toString().replace(/[^\d.]/g, '');
+                      const leaseFeePresets = ['2000', '750', '0'];
+                      const leaseFeeOption = leaseFeePresets.includes(normalizedLeaseFee) ? normalizedLeaseFee : 'custom';
+
+                      return (
+                        <>
+                          <select
+                            value={leaseFeeOption}
+                            onChange={(e) => {
+                              const selected = e.target.value;
+                              if (selected !== 'custom') {
+                                updateField('financial', 'leaseFee', selected);
+                              }
+                            }}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            <option value="2000">R 2 000.00</option>
+                            <option value="750">R 750.00</option>
+                            <option value="0">R 0.00</option>
+                            <option value="custom">Custom amount</option>
+                          </select>
+                          {leaseFeeOption === 'custom' && (
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-600 font-medium">R</span>
+                              <input
+                                type="text"
+                                placeholder="Enter amount"
+                                value={leaseFeeValue}
+                                onChange={(e) => updateField('financial', 'leaseFee', e.target.value)}
+                                className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -5454,4 +5699,3 @@ Generated by Automated Lease Drafting System
 };
 
 export default LeaseDraftingSystem;
-

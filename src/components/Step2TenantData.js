@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, Upload, FileText, X, Star, Check, AlertCircle } from 'lucide-react';
+import { Loader2, Upload, FileText, X, Check, AlertCircle } from 'lucide-react';
 import './Step2TenantData.css';
 import { parseExtractedData } from '../utils/clientOCR';
 import { generateLeaseDocument } from '../utils/leaseGenerator';
@@ -356,14 +356,6 @@ const Step2TenantData = ({ tenantData, setTenantData, leaseDetails, setLeaseDeta
             <p className="header-subtitle">Upload or paste your documents to automatically extract tenant information</p>
           </div>
         </div>
-        <button
-          onClick={handleSetDefaultLandlord}
-          className={`default-btn ${hasDefaultLandlord ? 'default-active' : ''}`}
-          title={hasDefaultLandlord ? 'Click to remove default landlord' : 'Click to set default landlord'}
-        >
-          <Star size={20} fill={hasDefaultLandlord ? 'currentColor' : 'none'} />
-          {hasDefaultLandlord ? 'Default Set' : 'Set Default Landlord'}
-        </button>
       </div>
 
       {/* Alert Messages */}
