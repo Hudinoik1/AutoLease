@@ -150,6 +150,9 @@ localStorage.removeItem('defaultSurety');
       escalationRate: '6', // Default 6% escalation - configurable
       deposit: '',
       depositType: 'held', // 'held' or 'payable'
+      depositHeldAmount: '',
+      depositPaymentMonths: '',
+      depositPaymentStartDate: '',
       annexures: { A: true, B: true, C: true, D: true }, // Annexure checkboxes
       leaseFee: '750.00',
       utilities: 'METERED OR % AGE OF EXPENSE',
@@ -966,6 +969,9 @@ localStorage.removeItem('defaultSurety');
         escalationRate: '6', // Reset to default 6%
         deposit: '',
         depositType: 'held',
+        depositHeldAmount: '',
+        depositPaymentMonths: '',
+        depositPaymentStartDate: '',
         annexures: { A: true, B: true, C: true, D: true },
         leaseFee: '750.00',
         utilities: 'METERED OR % OF EXPENSE',
@@ -1211,6 +1217,63 @@ localStorage.removeItem('defaultSurety');
     return `R ${num.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  const parseCurrencyValue = (value) => {
+    if (value === null || value === undefined || value === '') return 0;
+    const num = parseFloat(value.toString().replace(/[^\d.]/g, ''));
+    return isNaN(num) ? 0 : num;
+  };
+
+  const formatDateShort = (dateStr, placeholder = '[DATE]') => {
+    if (!dateStr) return placeholder;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return placeholder;
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const buildDepositTerms = (financial, lease) => {
+    const totalDeposit = parseCurrencyValue(financial.deposit);
+    if (!totalDeposit) return ['N/A'];
+
+    const heldAmount = parseCurrencyValue(financial.depositHeldAmount);
+    const remainingDeposit = Math.max(totalDeposit - heldAmount, 0);
+    const months = parseInt(financial.depositPaymentMonths, 10);
+
+    const lines = [`Deposit required - ${formatCurrency(totalDeposit)}`];
+
+    if (heldAmount > 0) {
+      lines.push(`Deposit held - ${formatCurrency(heldAmount)}`);
+    }
+
+    if (remainingDeposit > 0) {
+      if (months && months > 0) {
+        lines.push(`${formatCurrency(remainingDeposit)} - Payable over ${months} month${months === 1 ? '' : 's'} as follows:`);
+        const startDate = financial.depositPaymentStartDate || lease.commencementDate || financial.year1?.from;
+        for (let i = 0; i < months; i += 1) {
+          const paymentDate = startDate ? new Date(startDate) : null;
+          if (paymentDate && !isNaN(paymentDate.getTime())) {
+            paymentDate.setMonth(paymentDate.getMonth() + i);
+          }
+          const paymentAmount = remainingDeposit / months;
+          lines.push(`${formatCurrency(paymentAmount)} - Payable on or before ${formatDateShort(paymentDate ? paymentDate.toISOString() : '', '[DATE]')}`);
+        }
+      } else if (financial.depositType === 'payable') {
+        lines.push(`${formatCurrency(remainingDeposit)} – DEPOSIT PAYABLE UPON SIGNATURE OF LEASE.`);
+      } else {
+        lines.push(`${formatCurrency(remainingDeposit)} – DEPOSIT HELD.`);
+      }
+    }
+
+    return lines;
+  };
+
+  const formatDepositTerms = (financial, lease, useHTML = false) => {
+    const lines = buildDepositTerms(financial, lease);
+    return useHTML ? lines.join('<br>') : lines.join('\n');
+  };
+
   // Format address - filter out email addresses and phone numbers
   const formatAddress = (addr) => {
     if (!addr) return '';
@@ -1246,7 +1309,7 @@ localStorage.removeItem('defaultSurety');
   };
 
   const generateMonthlyRentalTableText = () => {
-    const { financial } = extractedData;
+    const { financial, lease } = extractedData;
     
     const formatDate = (dateStr) => {
       if (!dateStr) return '';
@@ -1287,80 +1350,38 @@ localStorage.removeItem('defaultSurety');
     // Underline header
     table += '_'.repeat(totalWidth) + '\n';
     
-    // Year 1 row
-    const year1Cells = [
-      formatCurrency(financial.year1.basicRent) || 'R [AMOUNT]',
-      formatCurrency(calculateVAT(financial.year1.basicRent)) || 'R [AMOUNT]',
-      formatCurrency(financial.year1.security) || 'R [AMOUNT]',
-      `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year1.refuse) || 'R [AMOUNT]'}\np/m`,
-      `*${formatCurrency(financial.year1.rates) || 'R [AMOUNT]'}`,
-      formatDate(financial.year1.from) || '[FROM]',
-      formatDate(financial.year1.to) || '[TO]'
-    ];
-    
-    const year1Lines = year1Cells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
-    for (let i = 0; i < year1Lines; i++) {
-      year1Cells.forEach((cell, idx) => {
-        const lines = cell.split('\n');
-        const cellLine = lines[i] || '';
-        table += cellLine.padEnd(colWidths[idx]);
-      });
-      table += '\n';
+    const totalYears = Math.max(1, Math.min(parseInt(lease.years || 1, 10), 5));
+
+    for (let yearNum = 1; yearNum <= totalYears; yearNum += 1) {
+      const yearData = getYearData(yearNum);
+      const yearCells = [
+        formatCurrency(yearData.basicRent) || 'R [AMOUNT]',
+        formatCurrency(calculateVAT(yearData.basicRent)) || 'R [AMOUNT]',
+        formatCurrency(yearData.security) || 'R [AMOUNT]',
+        `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(yearData.refuse) || 'R [AMOUNT]'}\np/m`,
+        `*${formatCurrency(yearData.rates) || 'R [AMOUNT]'}`,
+        formatDate(yearData.from) || '[FROM]',
+        formatDate(yearData.to) || '[TO]'
+      ];
+      
+      const yearLines = yearCells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
+      for (let i = 0; i < yearLines; i++) {
+        yearCells.forEach((cell, idx) => {
+          const lines = cell.split('\n');
+          const cellLine = lines[i] || '';
+          table += cellLine.padEnd(colWidths[idx]);
+        });
+        table += '\n';
+      }
+      
+      table += '_'.repeat(totalWidth) + '\n';
     }
-    
-    table += '_'.repeat(totalWidth) + '\n';
-    
-    // Year 2 row
-    const year2Cells = [
-      formatCurrency(financial.year2.basicRent) || 'R [AMOUNT]',
-      formatCurrency(calculateVAT(financial.year2.basicRent)) || 'R [AMOUNT]',
-      formatCurrency(financial.year2.security) || 'R [AMOUNT]',
-      `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year2.refuse) || 'R [AMOUNT]'}\np/m`,
-      `*${formatCurrency(financial.year2.rates) || 'R [AMOUNT]'}`,
-      formatDate(financial.year2.from) || '[FROM]',
-      formatDate(financial.year2.to) || '[TO]'
-    ];
-    
-    const year2Lines = year2Cells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
-    for (let i = 0; i < year2Lines; i++) {
-      year2Cells.forEach((cell, idx) => {
-        const lines = cell.split('\n');
-        const cellLine = lines[i] || '';
-        table += cellLine.padEnd(colWidths[idx]);
-      });
-      table += '\n';
-    }
-    
-    table += '_'.repeat(totalWidth) + '\n';
-    
-    // Year 3 row
-    const year3Cells = [
-      formatCurrency(financial.year3.basicRent) || 'R [AMOUNT]',
-      formatCurrency(calculateVAT(financial.year3.basicRent)) || 'R [AMOUNT]',
-      formatCurrency(financial.year3.security) || 'R [AMOUNT]',
-      `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(financial.year3.refuse) || 'R [AMOUNT]'}\np/m`,
-      `*${formatCurrency(financial.year3.rates) || 'R [AMOUNT]'}`,
-      formatDate(financial.year3.from) || '[FROM]',
-      formatDate(financial.year3.to) || '[TO]'
-    ];
-    
-    const year3Lines = year3Cells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
-    for (let i = 0; i < year3Lines; i++) {
-      year3Cells.forEach((cell, idx) => {
-        const lines = cell.split('\n');
-        const cellLine = lines[i] || '';
-        table += cellLine.padEnd(colWidths[idx]);
-      });
-      table += '\n';
-    }
-    
-    table += '_'.repeat(totalWidth) + '\n';
     
     return table;
   };
 
   const generateMonthlyRentalTableHTML = () => {
-    const { financial } = extractedData;
+    const { financial, lease } = extractedData;
     
     const formatDate = (dateStr) => {
       if (!dateStr) return '';
@@ -1370,6 +1391,22 @@ localStorage.removeItem('defaultSurety');
       const year = date.getFullYear();
       return `${day}/${month}/${year}`;
     };
+
+    const totalYears = Math.max(1, Math.min(parseInt(lease.years || 1, 10), 5));
+    const rows = Array.from({ length: totalYears }, (_, index) => {
+      const yearNum = index + 1;
+      const yearData = getYearData(yearNum);
+      return `
+    <tr>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(yearData.basicRent) || 'R [AMOUNT]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(yearData.basicRent)) || 'R [AMOUNT]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(yearData.security) || 'R [AMOUNT]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(yearData.refuse) || 'R [AMOUNT]'}<br>p/m</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(yearData.rates) || 'R [AMOUNT]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(yearData.from) || '[FROM]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(yearData.to) || '[TO]'}</td>
+    </tr>`;
+    }).join('');
 
     return `
 <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin: 10px 0;">
@@ -1385,51 +1422,7 @@ localStorage.removeItem('defaultSurety');
     </tr>
   </thead>
   <tbody>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year1.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year1.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year1.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year1.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year1.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year1.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year1.to) || '[TO]'}</td>
-    </tr>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year2.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year2.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year2.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year2.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year2.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year2.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year2.to) || '[TO]'}</td>
-    </tr>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year3.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year3.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year3.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year3.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year3.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year3.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year3.to) || '[TO]'}</td>
-    </tr>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year4?.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year4?.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year4?.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year4?.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year4?.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year4?.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year4?.to) || '[TO]'}</td>
-    </tr>
-    <tr>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year5?.basicRent) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(financial.year5?.basicRent)) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(financial.year5?.security) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(financial.year5?.refuse) || 'R [AMOUNT]'}<br>p/m</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(financial.year5?.rates) || 'R [AMOUNT]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year5?.from) || '[FROM]'}</td>
-      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(financial.year5?.to) || '[TO]'}</td>
-    </tr>
+    ${rows}
   </tbody>
 </table>`;
   };
@@ -1469,16 +1462,6 @@ localStorage.removeItem('defaultSurety');
       const month = monthNames[date.getMonth()];
       const year = date.getFullYear();
       return `${day} ${month} ${year}`;
-    };
-
-    // Format date as "31/08/2028"
-    const formatDateShort = (dateStr) => {
-      if (!dateStr) return '[DATE]';
-      const date = new Date(dateStr);
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      return `${day}/${month}/${year}`;
     };
 
     // Format document date
@@ -1576,7 +1559,7 @@ ${useHTML ? generateMonthlyRentalTableHTML() : generateMonthlyRentalTableText()}
 
 *INCREASES AS PER RELEVANT MUNICIPAL AUTHORITY/CONTRACTOR IN RATES AND REFUSE TO APPLY ON A PROPORTIONATE BASIS.
 
-1.13 DEPOSIT: ${financial.deposit && parseFloat(financial.deposit) > 0 ? `${formatCurrency(financial.deposit)} – ${financial.depositType === 'payable' ? 'DEPOSIT PAYABLE UPON SIGNATURE OF LEASE.' : 'DEPOSIT HELD.'}` : 'N/A'}
+1.13 DEPOSIT: ${formatDepositTerms(financial, lease, useHTML)}
 
 1.14.1 TURNOVER PERCENTAGE: ${financial.turnoverPercentage || 'N/A'}
 
@@ -1985,6 +1968,12 @@ Generated by Automated Lease Drafting System
       doc.text(value || '', margin + indent, yPosition);
       yPosition += SPACING.field;
     };
+
+    const renderLines = (lines, indent = 20) => {
+      lines.forEach((line) => {
+        renderValue(line, indent);
+      });
+    };
     
     // 1.1 THE LANDLORD
     renderSectionTitle('1.1 THE LANDLORD:');
@@ -2278,7 +2267,7 @@ Generated by Automated Lease Drafting System
     // Remaining sections
     yPosition += SPACING.section;
     renderSectionTitle('1.13 DEPOSIT:');
-    renderValue(financial.deposit && parseFloat(financial.deposit) > 0 ? `${formatCurrency(financial.deposit)} – ${financial.depositType === 'payable' ? 'DEPOSIT PAYABLE UPON SIGNATURE OF LEASE.' : 'DEPOSIT HELD.'}` : 'N/A');
+    renderLines(buildDepositTerms(financial, lease));
     
     yPosition += SPACING.field;
     doc.setFont('helvetica', 'bold');
@@ -4081,37 +4070,6 @@ Generated by Automated Lease Drafting System
                   <Building className="text-purple-600" size={24} />
                   1.1 THE LANDLORD
                 </h2>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hasDefaultLandlord}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        // Check if landlord data exists
-                        const landlordName = extractedData?.landlord?.name;
-                        if (!landlordName || landlordName.trim() === '') {
-                          toast.warning('Please fill in landlord information first before setting as default.');
-                          e.target.checked = false;
-                          return;
-                        }
-                        // Save as default
-                        localStorage.setItem('defaultLandlord', JSON.stringify(extractedData.landlord));
-                        setHasDefaultLandlord(true);
-                        toast.success('Default landlord saved!');
-                      } else {
-                        // Remove default
-                        localStorage.removeItem('defaultLandlord');
-                        setHasDefaultLandlord(false);
-                        toast.success('Default landlord removed');
-                      }
-                    }}
-                    className="w-5 h-5 text-purple-600 rounded focus:ring-purple-500"
-                  />
-                  <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                    <Star size={16} fill={hasDefaultLandlord ? 'currentColor' : 'none'} className={hasDefaultLandlord ? 'text-yellow-500' : 'text-gray-400'} />
-                    Save as Default
-                  </span>
-                </label>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <input
@@ -4768,6 +4726,55 @@ Generated by Automated Lease Drafting System
                       })()}
                     </div>
                   </div>
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 block mb-1">Deposit held (optional)</label>
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600 font-medium text-xs">R</span>
+                        <input
+                          type="text"
+                          placeholder="0.00"
+                          value={extractedData.financial?.depositHeldAmount || ''}
+                          onChange={(e) => updateField('financial', 'depositHeldAmount', e.target.value)}
+                          className="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 block mb-1">Payable over (months)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="e.g. 5"
+                        value={extractedData.financial?.depositPaymentMonths || ''}
+                        onChange={(e) => updateField('financial', 'depositPaymentMonths', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 block mb-1">First payment due</label>
+                      <input
+                        type="date"
+                        value={extractedData.financial?.depositPaymentStartDate || ''}
+                        onChange={(e) => updateField('financial', 'depositPaymentStartDate', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                  {(() => {
+                    const totalDeposit = parseCurrencyValue(extractedData.financial?.deposit);
+                    const heldAmount = parseCurrencyValue(extractedData.financial?.depositHeldAmount);
+                    const months = parseInt(extractedData.financial?.depositPaymentMonths || 0, 10);
+                    const remaining = Math.max(totalDeposit - heldAmount, 0);
+                    if (!remaining || !months) return null;
+                    const perMonth = remaining / months;
+                    return (
+                      <p className="text-xs text-gray-600 mt-2">
+                        Remaining deposit of {formatCurrency(remaining)} will be split into {months} payment{months === 1 ? '' : 's'} of {formatCurrency(perMonth)} each.
+                      </p>
+                    );
+                  })()}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 items-center p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500">
@@ -4825,15 +4832,45 @@ Generated by Automated Lease Drafting System
                   <label className="text-sm font-bold text-gray-900">
                     1.16 THE FOLLOWING LEASE FEES SHALL BE PAYABLE BY THE TENANT ON SIGNATURE OF THIS LEASE (EXCL. VAT)
                   </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-600 font-medium">R</span>
-                    <input
-                      type="text"
-                      placeholder="e.g. 750.00"
-                      value={extractedData.financial.leaseFee}
-                      onChange={(e) => updateField('financial', 'leaseFee', e.target.value)}
-                      className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                  <div className="flex flex-col gap-2">
+                    {(() => {
+                      const leaseFeeValue = extractedData.financial.leaseFee ?? '';
+                      const normalizedLeaseFee = leaseFeeValue.toString().replace(/[^\d.]/g, '');
+                      const leaseFeePresets = ['2000', '750', '0'];
+                      const leaseFeeOption = leaseFeePresets.includes(normalizedLeaseFee) ? normalizedLeaseFee : 'custom';
+
+                      return (
+                        <>
+                          <select
+                            value={leaseFeeOption}
+                            onChange={(e) => {
+                              const selected = e.target.value;
+                              if (selected !== 'custom') {
+                                updateField('financial', 'leaseFee', selected);
+                              }
+                            }}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          >
+                            <option value="2000">R 2 000.00</option>
+                            <option value="750">R 750.00</option>
+                            <option value="0">R 0.00</option>
+                            <option value="custom">Custom amount</option>
+                          </select>
+                          {leaseFeeOption === 'custom' && (
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-600 font-medium">R</span>
+                              <input
+                                type="text"
+                                placeholder="Enter amount"
+                                value={leaseFeeValue}
+                                onChange={(e) => updateField('financial', 'leaseFee', e.target.value)}
+                                className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              />
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -5454,4 +5491,3 @@ Generated by Automated Lease Drafting System
 };
 
 export default LeaseDraftingSystem;
-
