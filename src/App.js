@@ -153,12 +153,6 @@ localStorage.removeItem('defaultSurety');
       depositHeldAmount: '',
       depositPaymentMonths: '',
       depositPaymentStartDate: '',
-      chargeColumns: {
-        security: true,
-        cleaning: false,
-        operatingCosts: false,
-        insurance: false
-      },
       annexures: { A: true, B: true, C: true, D: true }, // Annexure checkboxes
       leaseFee: '750.00',
       utilities: 'METERED OR % AGE OF EXPENSE',
@@ -979,12 +973,6 @@ localStorage.removeItem('defaultSurety');
         depositHeldAmount: '',
         depositPaymentMonths: '',
         depositPaymentStartDate: '',
-        chargeColumns: {
-          security: true,
-          cleaning: false,
-          operatingCosts: false,
-          insurance: false
-        },
         annexures: { A: true, B: true, C: true, D: true },
         leaseFee: '750.00',
         utilities: 'METERED OR % OF EXPENSE',
@@ -1284,7 +1272,7 @@ localStorage.removeItem('defaultSurety');
     }
 
     if (remainingDeposit > 0) {
-      if (financial.depositType === 'over_time' && months && months > 0) {
+      if (months && months > 0) {
         lines.push(`${formatCurrency(remainingDeposit)} - Payable over ${months} month${months === 1 ? '' : 's'} as follows:`);
         const startDate = financial.depositPaymentStartDate || lease.commencementDate || financial.year1?.from;
         for (let i = 0; i < months; i += 1) {
@@ -1295,8 +1283,6 @@ localStorage.removeItem('defaultSurety');
           const paymentAmount = remainingDeposit / months;
           lines.push(`${formatCurrency(paymentAmount)} - Payable on or before ${formatDateShort(paymentDate ? paymentDate.toISOString() : '', '[DATE]')}`);
         }
-      } else if (financial.depositType === 'over_time') {
-        lines.push(`${formatCurrency(remainingDeposit)} – DEPOSIT PAYABLE OVER TIME.`);
       } else if (financial.depositType === 'payable') {
         lines.push(`${formatCurrency(remainingDeposit)} – DEPOSIT PAYABLE UPON SIGNATURE OF LEASE.`);
       } else {
@@ -1310,41 +1296,6 @@ localStorage.removeItem('defaultSurety');
   const formatDepositTerms = (financial, lease, useHTML = false) => {
     const lines = buildDepositTerms(financial, lease);
     return useHTML ? lines.join('<br>') : lines.join('\n');
-  };
-
-  const getChargeColumns = (chargeColumns = {}) => {
-    const defaults = {
-      security: true,
-      cleaning: false,
-      operatingCosts: false,
-      insurance: false
-    };
-    return { ...defaults, ...chargeColumns };
-  };
-
-  const getYearFieldValue = (yearNum, field) => {
-    const yearKey = `year${yearNum}`;
-    const yearData = extractedData.financial[yearKey] || {};
-    if (yearNum === 1) {
-      return yearData[field] || '';
-    }
-    if (yearData[field] !== undefined && yearData[field] !== '') {
-      return yearData[field];
-    }
-    return getEscalatedValue(extractedData.financial.year1?.[field], yearNum);
-  };
-
-  const getBeneficialOccupationPeriod = () => {
-    const months = parseInt(extractedData.lease.beneficialOccupationMonths, 10);
-    if (!extractedData.lease.beneficialOccupationEnabled || !months || months <= 0 || !extractedData.lease.commencementDate) {
-      return null;
-    }
-    const startDate = new Date(extractedData.lease.commencementDate);
-    if (isNaN(startDate.getTime())) return null;
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + months);
-    endDate.setDate(endDate.getDate() - 1);
-    return { startDate, endDate };
   };
 
   // Format address - filter out email addresses and phone numbers
@@ -1489,32 +1440,37 @@ localStorage.removeItem('defaultSurety');
       });
       table += '\n';
     }
-
+    
+    // Underline header
     table += '_'.repeat(totalWidth) + '\n';
-
-    const rows = [];
+    
     const totalYears = Math.max(1, Math.min(parseInt(lease.years || 1, 10), 5));
-    if (boPeriod) {
-      rows.push({ rowType: 'beneficial', yearNum: 1 });
-    }
-    for (let yearNum = 1; yearNum <= totalYears; yearNum += 1) {
-      rows.push({ rowType: 'year', yearNum });
-    }
 
-    rows.forEach((row) => {
-      const rowCells = columns.map(column => column.getValue(row));
-      const rowLines = rowCells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
-      for (let i = 0; i < rowLines; i++) {
-        rowCells.forEach((cell, idx) => {
+    for (let yearNum = 1; yearNum <= totalYears; yearNum += 1) {
+      const yearData = getYearData(yearNum);
+      const yearCells = [
+        formatCurrency(yearData.basicRent) || 'R [AMOUNT]',
+        formatCurrency(calculateVAT(yearData.basicRent)) || 'R [AMOUNT]',
+        formatCurrency(yearData.security) || 'R [AMOUNT]',
+        `ELECTRICITY\nSEWERAGE & WATER\n\n*${formatCurrency(yearData.refuse) || 'R [AMOUNT]'}\np/m`,
+        `*${formatCurrency(yearData.rates) || 'R [AMOUNT]'}`,
+        formatDate(yearData.from) || '[FROM]',
+        formatDate(yearData.to) || '[TO]'
+      ];
+      
+      const yearLines = yearCells.map(c => c.split('\n').length).reduce((max, len) => Math.max(max, len), 0);
+      for (let i = 0; i < yearLines; i++) {
+        yearCells.forEach((cell, idx) => {
           const lines = cell.split('\n');
           const cellLine = lines[i] || '';
           table += cellLine.padEnd(colWidths[idx]);
         });
         table += '\n';
       }
+      
       table += '_'.repeat(totalWidth) + '\n';
-    });
-
+    }
+    
     return table;
   };
 
@@ -1530,62 +1486,21 @@ localStorage.removeItem('defaultSurety');
       return `${day}/${month}/${year}`;
     };
 
-    const chargeColumns = getChargeColumns(financial.chargeColumns);
-    const ratesDateLabel = financial.ratesEffectiveDate ? formatDate(financial.ratesEffectiveDate) : '01/06/2025';
-    const boPeriod = getBeneficialOccupationPeriod();
     const totalYears = Math.max(1, Math.min(parseInt(lease.years || 1, 10), 5));
-    const rows = [];
-
-    const columnHeaders = [
-      'BASIC RENT<br>EXCL. VAT',
-      'BASIC RENT<br>INCL. VAT',
-      ...(chargeColumns.security ? ['SECURITY<br>EXCL. VAT'] : []),
-      ...(chargeColumns.cleaning ? ['CLEANING<br>EXCL. VAT'] : []),
-      ...(chargeColumns.operatingCosts ? ['OPERATING COSTS<br>EXCL. VAT'] : []),
-      ...(chargeColumns.insurance ? ['INSURANCE<br>EXCL. VAT'] : []),
-      `*REFUSE AS AT<br>${ratesDateLabel}<br>EXCL. VAT`,
-      `*RATES AS AT<br>${ratesDateLabel}<br>EXCL. VAT`,
-      'FROM',
-      'TO'
-    ];
-
-    const buildRowCells = (rowType, yearNum) => {
-      const isBeneficial = rowType === 'beneficial';
-      const fromDate = isBeneficial && boPeriod ? formatDate(boPeriod.startDate.toISOString()) : formatDate(getYearData(yearNum).from);
-      const toDate = isBeneficial && boPeriod ? formatDate(boPeriod.endDate.toISOString()) : formatDate(getYearData(yearNum).to);
-      const baseRent = isBeneficial ? 0 : getYearFieldValue(yearNum, 'basicRent');
-      const security = isBeneficial ? 0 : getYearFieldValue(yearNum, 'security');
-      const cleaning = isBeneficial ? 0 : getYearFieldValue(yearNum, 'cleaning');
-      const operatingCosts = isBeneficial ? 0 : getYearFieldValue(yearNum, 'operatingCosts');
-      const insurance = isBeneficial ? 0 : getYearFieldValue(yearNum, 'insurance');
-      const refuse = isBeneficial ? 0 : getYearFieldValue(yearNum, 'refuse');
-      const rates = isBeneficial ? 0 : getYearFieldValue(yearNum, 'rates');
-
-      return [
-        formatCurrency(baseRent) || 'R [AMOUNT]',
-        formatCurrency(calculateVAT(baseRent)) || 'R [AMOUNT]',
-        ...(chargeColumns.security ? [formatCurrency(security) || 'R [AMOUNT]'] : []),
-        ...(chargeColumns.cleaning ? [formatCurrency(cleaning) || 'R [AMOUNT]'] : []),
-        ...(chargeColumns.operatingCosts ? [formatCurrency(operatingCosts) || 'R [AMOUNT]'] : []),
-        ...(chargeColumns.insurance ? [formatCurrency(insurance) || 'R [AMOUNT]'] : []),
-        `ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(refuse) || 'R [AMOUNT]'}<br>p/m`,
-        `*${formatCurrency(rates) || 'R [AMOUNT]'}`,
-        fromDate || '[FROM]',
-        toDate || '[TO]'
-      ];
-    };
-
-    if (boPeriod) {
-      rows.push(buildRowCells('beneficial', 1));
-    }
-    for (let yearNum = 1; yearNum <= totalYears; yearNum += 1) {
-      rows.push(buildRowCells('year', yearNum));
-    }
-
-    const rowsHtml = rows.map((cells) => `
+    const rows = Array.from({ length: totalYears }, (_, index) => {
+      const yearNum = index + 1;
+      const yearData = getYearData(yearNum);
+      return `
     <tr>
-      ${cells.map(cell => `<td style="padding: 8px; text-align: center; border: 1px solid #999;">${cell}</td>`).join('')}
-    </tr>`).join('');
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(yearData.basicRent) || 'R [AMOUNT]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(calculateVAT(yearData.basicRent)) || 'R [AMOUNT]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatCurrency(yearData.security) || 'R [AMOUNT]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">ELECTRICITY<br>SEWERAGE & WATER<br><br>*${formatCurrency(yearData.refuse) || 'R [AMOUNT]'}<br>p/m</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">*${formatCurrency(yearData.rates) || 'R [AMOUNT]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(yearData.from) || '[FROM]'}</td>
+      <td style="padding: 8px; text-align: center; border: 1px solid #999;">${formatDate(yearData.to) || '[TO]'}</td>
+    </tr>`;
+    }).join('');
 
     return `
 <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin: 10px 0;">
@@ -1595,7 +1510,7 @@ localStorage.removeItem('defaultSurety');
     </tr>
   </thead>
   <tbody>
-    ${rowsHtml}
+    ${rows}
   </tbody>
 </table>`;
   };
@@ -3992,6 +3907,197 @@ Generated by Automated Lease Drafting System
                   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
                 <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.txt"
+                  multiple
+                  onChange={(e) => handleFileUpload('tenantID', e.target.files)}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+                {documents.tenantID && documents.tenantID.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {documents.tenantID.map((file, index) => (
+                      <div key={index} className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2 text-sm text-green-700 flex-1 min-w-0">
+                            <CheckCircle size={16} className="flex-shrink-0" />
+                            <span className="truncate font-medium">{file.name}</span>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveDocument('tenantID', index)}
+                            className="ml-2 p-1 text-red-600 hover:bg-red-100 rounded transition flex-shrink-0"
+                            title="Remove document"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                        {verificationStatus.tenantID.idNumber && index === 0 && (
+                          <div className="mt-2 pl-6 text-xs text-gray-600">
+                            <span className="font-medium">ID Number:</span> {verificationStatus.tenantID.idNumber}
+                          </div>
+                        )}
+                        {verificationStatus.tenantID.verified && verificationStatus.tenantID.date && index === 0 && (
+                          <div className="mt-1 pl-6 text-xs text-gray-500">
+                            Verified: {new Date(verificationStatus.tenantID.date).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {processing.tenantID && (
+                  <div className="mt-2 text-sm text-blue-600">Processing...</div>
+                )}
+                {processingErrors.tenantID && (
+                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={16} />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-red-800">Processing Error</p>
+                        <p className="text-sm text-red-700 mt-1">{processingErrors.tenantID}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* HIDDEN: Or Paste FICA Document Text - Not used for now
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg border-2 border-dashed border-blue-300">
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <Clipboard className="text-blue-600" size={18} />
+                  Or Paste FICA Document Text
+                </label>
+                <textarea
+                  value={pastedFicaText}
+                  onChange={(e) => setPastedFicaText(e.target.value)}
+                  placeholder="Paste FICA document text here (Ctrl+V)..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  rows={18}
+                  style={{ minHeight: '400px' }}
+                />
+                <button
+                  onClick={handlePasteFica}
+                  disabled={processing.pastedFica || !pastedFicaText.trim()}
+                  className="mt-2 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {processing.pastedFica ? (
+                    <>
+                      <AlertCircle size={16} className="animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Clipboard size={16} />
+                      Extract Data from Pasted Text
+                    </>
+                  )}
+                </button>
+                {processingErrors.pastedFica && (
+                  <div className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                    <AlertCircle size={14} />
+                    {processingErrors.pastedFica}
+                  </div>
+                )}
+                {!processing.pastedFica && !processingErrors.pastedFica && pastedFicaText.trim() && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    Click "Extract Data" to populate tenant fields from the pasted text.
+                  </div>
+                )}
+              </div>
+              */}
+
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Surety ID Document *
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.txt"
+                  multiple
+                  onChange={(e) => handleFileUpload('suretyID', e.target.files)}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+                {documents.suretyID && documents.suretyID.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {documents.suretyID.map((file, index) => (
+                      <div key={index} className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2 text-sm text-green-700 flex-1 min-w-0">
+                            <CheckCircle size={16} className="flex-shrink-0" />
+                            <span className="truncate font-medium">{file.name}</span>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveDocument('suretyID', index)}
+                            className="ml-2 p-1 text-red-600 hover:bg-red-100 rounded transition flex-shrink-0"
+                            title="Remove document"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                        {verificationStatus.suretyID.idNumber && index === 0 && (
+                          <div className="mt-2 pl-6 text-xs text-gray-600">
+                            <span className="font-medium">ID Number:</span> {verificationStatus.suretyID.idNumber}
+                          </div>
+                        )}
+                        {verificationStatus.suretyID.verified && verificationStatus.suretyID.date && index === 0 && (
+                          <div className="mt-1 pl-6 text-xs text-gray-500">
+                            Verified: {new Date(verificationStatus.suretyID.date).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {processing.suretyID && (
+                  <div className="mt-2 text-sm text-blue-600">Processing...</div>
+                )}
+                {processingErrors.suretyID && (
+                  <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={16} />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-red-800">Processing Error</p>
+                        <p className="text-sm text-red-700 mt-1">{processingErrors.suretyID}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {(processing.landlordCIPC || processing.tenantCIPC || processing.tenantID || processing.suretyID) && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg flex items-center gap-2 text-blue-700">
+                  <AlertCircle size={20} />
+                  <span className="text-sm">Processing documents...</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 space-y-4">
+            {/* 1.1 Landlord Information Section */}
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                  <Building className="text-purple-600" size={24} />
+                  1.1 THE LANDLORD
+                </h2>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  type="text"
+                  placeholder="Landlord Name"
+                  value={extractedData.landlord.name}
+                  onChange={(e) => updateField('landlord', 'name', e.target.value)}
+                  className="col-span-2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+                <input
+                  type="text"
+                  placeholder="Registration Number"
+                  value={extractedData.landlord.regNo}
+                  onChange={(e) => updateField('landlord', 'regNo', e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+                <input
                   type="text"
                   placeholder="VAT Number (or TBA)"
                   value={extractedData.landlord.vatNo || 'TBA'}
@@ -4931,58 +5037,55 @@ Generated by Automated Lease Drafting System
                       })()}
                     </div>
                   </div>
-                  {extractedData.financial?.depositType === 'over_time' && (
-                    <>
-                      <div className="mt-4 grid grid-cols-3 gap-3">
-                        <div>
-                          <label className="text-xs font-semibold text-gray-700 block mb-1">Deposit held (optional)</label>
-                          <div className="relative">
-                            <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600 font-medium text-xs">R</span>
-                            <input
-                              type="text"
-                              placeholder="0.00"
-                              value={extractedData.financial?.depositHeldAmount || ''}
-                              onChange={(e) => updateField('financial', 'depositHeldAmount', e.target.value)}
-                              className="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-700 block mb-1">Payable over (months)</label>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="e.g. 5"
-                            value={extractedData.financial?.depositPaymentMonths || ''}
-                            onChange={(e) => updateField('financial', 'depositPaymentMonths', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-700 block mb-1">First payment due</label>
-                          <input
-                            type="date"
-                            value={extractedData.financial?.depositPaymentStartDate || ''}
-                            onChange={(e) => updateField('financial', 'depositPaymentStartDate', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 block mb-1">Deposit held (optional)</label>
+                      <div className="relative">
+                        <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-600 font-medium text-xs">R</span>
+                        <input
+                          type="text"
+                          placeholder="0.00"
+                          value={extractedData.financial?.depositHeldAmount || ''}
+                          onChange={(e) => updateField('financial', 'depositHeldAmount', e.target.value)}
+                          className="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
                       </div>
-                      {(() => {
-                        const totalDeposit = parseCurrencyValue(extractedData.financial?.deposit);
-                        const heldAmount = parseCurrencyValue(extractedData.financial?.depositHeldAmount);
-                        const months = parseInt(extractedData.financial?.depositPaymentMonths || 0, 10);
-                        const remaining = Math.max(totalDeposit - heldAmount, 0);
-                        if (!remaining || !months) return null;
-                        const perMonth = remaining / months;
-                        return (
-                          <p className="text-xs text-gray-600 mt-2">
-                            Remaining deposit of {formatCurrency(remaining)} will be split into {months} payment{months === 1 ? '' : 's'} of {formatCurrency(perMonth)} each.
-                          </p>
-                        );
-                      })()}
-                    </>
-                  )}
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 block mb-1">Payable over (months)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="e.g. 5"
+                        value={extractedData.financial?.depositPaymentMonths || ''}
+                        onChange={(e) => updateField('financial', 'depositPaymentMonths', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-700 block mb-1">First payment due</label>
+                      <input
+                        type="date"
+                        value={extractedData.financial?.depositPaymentStartDate || ''}
+                        onChange={(e) => updateField('financial', 'depositPaymentStartDate', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                  {(() => {
+                    const totalDeposit = parseCurrencyValue(extractedData.financial?.deposit);
+                    const heldAmount = parseCurrencyValue(extractedData.financial?.depositHeldAmount);
+                    const months = parseInt(extractedData.financial?.depositPaymentMonths || 0, 10);
+                    const remaining = Math.max(totalDeposit - heldAmount, 0);
+                    if (!remaining || !months) return null;
+                    const perMonth = remaining / months;
+                    return (
+                      <p className="text-xs text-gray-600 mt-2">
+                        Remaining deposit of {formatCurrency(remaining)} will be split into {months} payment{months === 1 ? '' : 's'} of {formatCurrency(perMonth)} each.
+                      </p>
+                    );
+                  })()}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 items-center p-3 bg-gray-50 rounded-lg border-l-4 border-blue-500">
